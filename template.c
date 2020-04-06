@@ -39,33 +39,33 @@ typedef int error_code;
  *
  */
 typedef struct BIOS_Parameter_Block_struct {
-    uint8 BS_jmpBoot[3];
-    uint8 BS_OEMName[8];
-    uint8 BPB_BytsPerSec[2];  // 512, 1024, 2048 or 4096
-    uint8 BPB_SecPerClus;     // 1, 2, 4, 8, 16, 32, 64 or 128
-    uint8 BPB_RsvdSecCnt[2];  // 1 for FAT12 and FAT16, typically 32 for FAT32
-    uint8 BPB_NumFATs;        // should be 2
-    uint8 BPB_RootEntCnt[2];
-    uint8 BPB_TotSec16[2];
-    uint8 BPB_Media;
-    uint8 BPB_FATSz16[2];
-    uint8 BPB_SecPerTrk[2];
-    uint8 BPB_NumHeads[2];
-    uint8 BPB_HiddSec[4];
-    uint8 BPB_TotSec32[4];
-    uint8 BPB_FATSz32[4];
-    uint8 BPB_ExtFlags[2];
-    uint8 BPB_FSVer[2];
-    uint8 BPB_RootClus[4];
-    uint8 BPB_FSInfo[2];
+    uint8 BS_jmpBoot[3]; // L'instruction jmp au début du code. Permet au processeur de sauter par dessus les données
+    uint8 BS_OEMName[8]; // Le nom du système
+    uint8 BPB_BytsPerSec[2];  // 512, 1024, 2048 or 4096   le nombre de bytes dans un secteur
+    uint8 BPB_SecPerClus;     // 1, 2, 4, 8, 16, 32, 64 or 128   le nombre de secteurs dans un cluster
+    uint8 BPB_RsvdSecCnt[2];  // 1 for FAT12 and FAT16, typically 32 for FAT32 :: le nombre de secteur réservés (pour ce que l'on veut)
+    uint8 BPB_NumFATs;        // should be 2;; Le nombre de tables FAT (que l'on verra par après)
+    uint8 BPB_RootEntCnt[2];  // Le nombre d'entrées root (0 en FAT32)
+    uint8 BPB_TotSec16[2];    // Le nombre total de secteurs (pas en FAT32)
+    uint8 BPB_Media;          // Le type de média physique (0xF8 pour un disque dur)
+    uint8 BPB_FATSz16[2];     // Le nombre de secteur pour une table FAT
+    uint8 BPB_SecPerTrk[2];   // Le nombre de secteur par track
+    uint8 BPB_NumHeads[2];    // Le nombre de têtes
+    uint8 BPB_HiddSec[4];     // Le nombre de secteurs cachés (on assumera 0)
+    uint8 BPB_TotSec32[4];    // Le nombre total de secteurs, cette fois pour FAT 23
+    uint8 BPB_FATSz32[4];     // La taille d'une table FAT (pour fat 32)
+    uint8 BPB_ExtFlags[2];    // On ignore ce champ
+    uint8 BPB_FSVer[2];       // La version du système de fichier
+    uint8 BPB_RootClus[4];    // Le cluster de la table du dossier root (ici on assumera que c'est toujours 2)
+    uint8 BPB_FSInfo[2];      // La version (on ignore)
     uint8 BPB_BkBootSec[2];
     uint8 BPB_Reserved[12];
-    uint8 BS_DrvNum;
-    uint8 BS_Reserved1;
-    uint8 BS_BootSig;
-    uint8 BS_VolID[4];
-    uint8 BS_VolLab[11];
-    uint8 BS_FilSysType[8];
+    uint8 BS_DrvNum;          // On ignore
+    uint8 BS_Reserved1;       // same
+    uint8 BS_BootSig;         // same
+    uint8 BS_VolID[4];        // same
+    uint8 BS_VolLab[11];      // same
+    uint8 BS_FilSysType[8];   // une chaine de caractrere qui devrait dire FAT32
 } BPB;
 
 typedef struct FAT_directory_entry_struct {
