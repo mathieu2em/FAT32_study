@@ -10,6 +10,7 @@
 
 #define FAT_NAME_LENGTH 11
 #define FAT_EOC_TAG 0x0FFFFFF8
+#define FAT_CLUSTER_NO_MASK 0x1FFFFFFF
 #define FAT_DIR_ENTRY_SIZE 32
 #define HAS_NO_ERROR(err) ((err) >= 0)
 #define NO_ERR 0
@@ -129,7 +130,20 @@ error_code get_cluster_chain_value(BPB *block,
                                    uint32 cluster,
                                    uint32 *value,
                                    FILE *archive) {
-    return 0;
+    uint32 fat_table_addr, cluster_addr;
+    size_t res, expected;
+    
+    fat_table_addr = as_uint16(block->BPB_BytsPerSec)
+        * as_uint16(block->BPB_RsvdSecCnt);
+
+    cluster_addr = ((cluster & FAT_CLUSTER_NO_MASK) << 2) + fat_table_addr;
+
+    if (fseek(archive, cluster_addr, SEEK_SET))
+        return GENERAL_ERR;
+
+    res = fread(value, 1, expected = sizeof(uint32), archive);
+    
+    return res == expected ? NO_ERR : GENERAL_ERR;
 }
 
 
