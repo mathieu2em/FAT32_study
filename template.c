@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define FAT_MAIN_LENGTH 8
 #define FAT_NAME_LENGTH 11
 #define FAT_EOC_TAG 0x0FFFFFF8
 #define FAT_CLUSTER_NO_MASK 0x1FFFFFFF
@@ -91,6 +92,8 @@ uint8 ilog2(uint32 n) {
     return i;
 }
 
+
+
 //--------------------------------------------------------------------------------------------------------
 //                                           DEBUT DU CODE
 //--------------------------------------------------------------------------------------------------------
@@ -146,6 +149,13 @@ error_code get_cluster_chain_value(BPB *block,
     return res == expected ? NO_ERR : GENERAL_ERR;
 }
 
+char FAT_ILLEGAL_NAME_CHARS[16] =
+    {
+     0x22, 0x2A, 0x2B, 0x2C,
+     0x2E, 0x2F, 0x3A, 0x3B,
+     0x3C, 0x3D, 0x3E, 0x3F,
+     0x5B, 0x5C, 0x5D, 0x7C
+    };
 
 /**
  * Exercice 3
@@ -156,7 +166,49 @@ error_code get_cluster_chain_value(BPB *block,
  * @return 0 ou 1 (faux ou vrai)
  */
 bool file_has_name(FAT_entry *entry, char *name) {
-    return 0;
+    int i, res;
+    char *out;
+
+    for (i = 0; i < 16; i++) {
+        if (strchr(name, FAT_ILLEGAL_NAME_CHARS[i])) {
+            fprintf(stderr, "illegal character in name\n");
+            return 0;
+        }
+    }
+    
+    out = malloc(sizeof(char) * (FAT_NAME_LENGTH + 1));
+    if (!out) {
+        fprintf(stderr, "out of memory\n");
+        return 0;
+    }
+    
+    for (i = 0; i < FAT_MAIN_LENGTH && name[i] && name[i] > 0x20 && name[i] != '.'; i++) {
+        out[i] = name[i] & 0xDF; // convert to uppercase
+    }
+
+    for (; i < FAT_MAIN_LENGTH; i++)
+        out[i] = ' '; // space pad
+
+    name = strchr(name, '.');
+    if (name) {
+        name++;
+        for (; i < FAT_NAME_LENGTH && *name; i++)
+            out[i] = *(name++) & 0xDF; // convert to uppercase
+        if (*name) {
+            fprintf(stderr, "extension cannot exceed 3 characters\n");
+            free(out);
+            return 0;
+        }
+    }
+    for (; i < FAT_NAME_LENGTH; i++)
+        out[i] = ' ';
+
+    out[FAT_NAME_LENGTH] = '\0';
+
+    res = strncmp(entry->DIR_Name, out, FAT_NAME_LENGTH) ? 1 : 0;
+        
+    free(out);
+    return res;
 }
 
 /**
@@ -220,6 +272,7 @@ int main(int argc, char *argv[]) {
     /*
      * Vous êtes libre de faire ce que vous voulez ici.
      */
+    /*
     FILE *fp = fopen("floppy.img", "r");
     BPB *block = malloc(sizeof(BPB));
     if (!block) {
@@ -233,6 +286,14 @@ int main(int argc, char *argv[]) {
     
     free(block);
     fclose(fp);
+    */
+
+    file_has_name(NULL, "foo.bar");
+    file_has_name(NULL, "foo.");
+    file_has_name(NULL, "Foo.Bar");
+    file_has_name(NULL, "helloyou.txt");
+    file_has_name(NULL, "PICKLE.A");
+    file_has_name(NULL, "helloyou.txty");
     
     return 0;
 }
