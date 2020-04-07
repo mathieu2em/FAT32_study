@@ -162,7 +162,9 @@ error_code break_up_path(char *path, uint8 level, char **output) {
  * @return un code d'erreur
  */
 error_code read_boot_block(FILE *archive, BPB **block) {
-    return 0;
+    size_t res, expected;
+    res = fread(*block, 1, expected = sizeof(BPB), archive);
+    return res == expected ? NO_ERR : GENERAL_ERR;
 }
 
 /**
@@ -196,5 +198,19 @@ int main(int argc, char *argv[]) {
     /*
      * Vous êtes libre de faire ce que vous voulez ici.
      */
+    FILE *fp = fopen("floppy.img", "r");
+    BPB *block = malloc(sizeof(BPB));
+    if (!block) {
+        fprintf(stderr, "memory error\n");
+        return 1;
+    }
+
+    read_boot_block(fp, &block);
+    fwrite(block->BS_OEMName, 8, 1, stdout);
+    puts("");
+    
+    free(block);
+    fclose(fp);
+    
     return 0;
 }
