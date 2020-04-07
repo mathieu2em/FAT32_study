@@ -104,7 +104,15 @@ uint8 ilog2(uint32 n) {
  * @return le LBA
  */
 uint32 cluster_to_lba(BPB *block, uint32 cluster, uint32 first_data_sector) {
-    return 0;
+    //uint32 begin;
+
+    //begin = as_uint16(block->BPB_RsvdSecCnt)
+    //    + as_uint32(block->BPB_HiddSec)
+    //    + (block->BPB_NumFATs * as_uint16(block->BPB_FATSz16));
+    
+    return first_data_sector
+        + (cluster - as_uint32(block->BPB_RootClus))
+        + block->BPB_SecPerClus;
 }
 
 /**
