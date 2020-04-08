@@ -113,7 +113,7 @@ uint32 cluster_to_lba(BPB *block, uint32 cluster, uint32 first_data_sector) {
     //begin = as_uint16(block->BPB_RsvdSecCnt)
     //    + as_uint32(block->BPB_HiddSec)
     //    + (block->BPB_NumFATs * as_uint16(block->BPB_FATSz16));
-    
+
     return first_data_sector
         + (cluster - as_uint32(block->BPB_RootClus))
         + block->BPB_SecPerClus;
@@ -223,6 +223,17 @@ bool file_has_name(FAT_entry *entry, char *name) {
  * -3 si out of memory
  */
 error_code break_up_path(char *path, uint8 level, char **output) {
+    int i;
+    char *temp_path;
+
+    temp_path = path;
+
+    // 1. on check si first caractere cest un slash si oui on fait juste le skip
+    if(temp_path[0] == '/') temp_path += 1;
+    // 2. on se rend au slash du bon niveau
+    for
+    // 3. on extrait le string
+    // 4. on le depose doucement dans le output pi on return cette merveille technologique
     return 0;
 }
 
@@ -283,7 +294,7 @@ int main(int argc, char *argv[]) {
     read_boot_block(fp, &block);
     fwrite(block->BS_OEMName, 8, 1, stdout);
     puts("");
-    
+
     free(block);
     fclose(fp);
     */
