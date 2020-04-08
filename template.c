@@ -135,7 +135,7 @@ error_code get_cluster_chain_value(BPB *block,
                                    FILE *archive) {
     uint32 fat_table_addr, cluster_addr;
     size_t res, expected;
-    
+
     fat_table_addr = as_uint16(block->BPB_BytsPerSec)
         * as_uint16(block->BPB_RsvdSecCnt);
 
@@ -145,7 +145,7 @@ error_code get_cluster_chain_value(BPB *block,
         return GENERAL_ERR;
 
     res = fread(value, 1, expected = sizeof(uint32), archive);
-    
+
     return res == expected ? NO_ERR : GENERAL_ERR;
 }
 
@@ -175,13 +175,13 @@ bool file_has_name(FAT_entry *entry, char *name) {
             return 0;
         }
     }
-    
+
     out = malloc(sizeof(char) * (FAT_NAME_LENGTH + 1));
     if (!out) {
         fprintf(stderr, "out of memory\n");
         return 0;
     }
-    
+
     for (i = 0; i < FAT_MAIN_LENGTH && name[i] && name[i] > 0x20 && name[i] != '.'; i++) {
         out[i] = name[i] & 0xDF; // convert to uppercase
     }
@@ -206,7 +206,7 @@ bool file_has_name(FAT_entry *entry, char *name) {
     out[FAT_NAME_LENGTH] = '\0';
 
     res = strncmp(entry->DIR_Name, out, FAT_NAME_LENGTH) ? 1 : 0;
-        
+
     free(out);
     return res;
 }
@@ -223,17 +223,35 @@ bool file_has_name(FAT_entry *entry, char *name) {
  * -3 si out of memory
  */
 error_code break_up_path(char *path, uint8 level, char **output) {
-    int i;
+    uint8 i;
     char *temp_path;
 
     temp_path = path;
 
+    if (!path) return -1;
+
     // 1. on check si first caractere cest un slash si oui on fait juste le skip
-    if(temp_path[0] == '/') temp_path += 1;
+    if (temp_path[0] == '/') temp_path += 1;
+
     // 2. on se rend au slash du bon niveau
-    for
-    // 3. on extrait le string
-    // 4. on le depose doucement dans le output pi on return cette merveille technologique
+    for (i = 0; i < level; i++) {
+        temp_path = strchr(temp_path,'/') + 1;
+        if (!temp_path) {
+            return -2;
+        }
+    }
+
+    // 3. on compte le nombre de caracteres avant le prochain '/'
+    for (i = 0; (temp_path[i] && (temp_path[i] != '/')); i++);
+
+    // 4. on alloue le output
+    *output = malloc(sizeof(char)*(i));
+
+    if (!*output) return -3;
+
+    // 5. on depose doucement le string dans le output
+    strncpy(*output, temp_path, i);
+
     return 0;
 }
 
@@ -305,6 +323,6 @@ int main(int argc, char *argv[]) {
     file_has_name(NULL, "helloyou.txt");
     file_has_name(NULL, "PICKLE.A");
     file_has_name(NULL, "helloyou.txty");
-    
+
     return 0;
 }
