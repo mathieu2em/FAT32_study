@@ -108,15 +108,8 @@ uint8 ilog2(uint32 n) {
  * @return le LBA
  */
 uint32 cluster_to_lba(BPB *block, uint32 cluster, uint32 first_data_sector) {
-    //uint32 begin;
-
-    //begin = as_uint16(block->BPB_RsvdSecCnt)
-    //    + as_uint32(block->BPB_HiddSec)
-    //    + (block->BPB_NumFATs * as_uint16(block->BPB_FATSz16));
-
     return first_data_sector
-        + (cluster - as_uint32(block->BPB_RootClus))
-        + block->BPB_SecPerClus;
+        + (cluster - as_uint32(block->BPB_RootClus)) * block->BPB_SecPerClus;
 }
 
 /**
@@ -211,6 +204,7 @@ bool file_has_name(FAT_entry *entry, char *name) {
     return res;
 }
 
+#define LEVEL_DEPTH_ERR -2
 /**
  * Exercice 4
  *
@@ -223,36 +217,40 @@ bool file_has_name(FAT_entry *entry, char *name) {
  * -3 si out of memory
  */
 error_code break_up_path(char *path, uint8 level, char **output) {
-    uint8 i;
+    uint16 i;
     char *temp_path;
 
     temp_path = path;
 
-    if (!path) return -1;
+    if (!path)
+        return GENERAL_ERR;
 
     // 1. on check si first caractere cest un slash si oui on fait juste le skip
-    if (temp_path[0] == '/') temp_path += 1;
+    if (temp_path[0] == '/')
+        temp_path += 1;
 
     // 2. on se rend au slash du bon niveau
     for (i = 0; i < level; i++) {
         temp_path = strchr(temp_path,'/') + 1;
-        if (!temp_path) {
-            return -2;
-        }
+        if (!temp_path)
+            return LEVEL_DEPTH_ERR;
     }
 
     // 3. on compte le nombre de caracteres avant le prochain '/'
-    for (i = 0; (temp_path[i] && (temp_path[i] != '/')); i++);
+    for (i = 0; (temp_path[i] && (temp_path[i] != '/')); i++)
+        ;
 
     // 4. on alloue le output
-    *output = malloc(sizeof(char)*(i));
+    *output = malloc(sizeof(char)*i);
 
-    if (!*output) return -3;
+    if (!*output)
+        return OUT_OF_MEM;
 
     // 5. on depose doucement le string dans le output
-    strncpy(*output, temp_path, i);
+    strncpy(*output, temp_path, i-1);
+    output[i-1] = '\0';
 
-    return 0;
+    return NO_ERR;
 }
 
 
@@ -280,7 +278,118 @@ error_code read_boot_block(FILE *archive, BPB **block) {
  * @return un code d'erreur
  */
 error_code find_file_descriptor(FILE *archive, BPB *block, char *path, FAT_entry **entry) {
-    return 0;
+    size_t cluster_bytes, read_bytes;
+    uint32 first_data_sector, file_cluster, file_sector;
+    error_code res = NO_ERR;
+    bool found = 0;
+    char *filename = NULL, *saved = NULL;
+    
+    first_data_sector = as_uint16(block->BPB_RsvdSecCnt)
+        + as_uint32(block->BPB_HiddSec)
+        + (block->BPB_NumFATs * as_uint16(block->BPB_FATSz16));
+    
+    // get root directory sector
+    file_cluster = as_uint32(block->BPB_RootClus);
+    file_sector = cluster_to_lba(block, file_cluster, first_data_sector);
+    // move file pointer to root directory entry position
+    fseek(archive, file_sector * as_uint16(block->BPB_BytsPerSec), SEEK_SET);
+
+    *entry = malloc(sizeof(FAT_entry *));
+    if (!*entry)
+        return OUT_OF_MEM;
+    
+    for (int i = 0; ; i++) {
+        // get filename of current path level
+        // -----
+        if (filename)
+            free(filename);
+        res = break_up_path(path, i, &filename);
+        if (res != NO_ERR) {
+            if (filename)
+                free(filename);
+            free(*entry);
+            return res;
+        }
+
+        // find FAT_entry associated with filename
+        // -----
+        found = 0;
+        // init cluster_bytes
+        cluster_bytes = block->BPB_SecPerClus * as_uint16(block->BPB_BytsPerSec);
+        // loop directory content
+        do {
+            // get directory entry
+            read_bytes = fread(*entry, 1, sizeof(FAT_entry), archive);
+            if (read_bytes != sizeof(FAT_entry)) {
+                free(filename);
+                free(*entry);
+                return GENERAL_ERR;
+            }
+
+            // update file position if end of cluster reached
+            cluster_bytes -= read_bytes;
+            // whole number of FAT_entry per cluster is guaranteed
+            if (cluster_bytes == 0) {
+                if (HAS_NO_ERROR(get_cluster_chain_value(block,
+                                                         file_cluster,
+                                                         &file_cluster,
+                                                         archive))) {
+                    // move file pointer
+                    file_sector = cluster_to_lba(block, file_cluster, first_data_sector);
+                    fseek(archive, file_sector * as_uint16(block->BPB_BytsPerSec), SEEK_SET);
+                    // reset cluster_bytes
+                    cluster_bytes = block->BPB_SecPerClus * as_uint16(block->BPB_BytsPerSec);
+                } else {
+                    free(filename);
+                    free(*entry);
+                    return GENERAL_ERR;
+                }
+            }
+
+            // check current FAT_entry for filename
+            if (file_has_name(*entry, filename)) {
+                found = 1;
+                break;
+            }
+        } while ((*entry)->DIR_Name[0]); // DIR_Name[0] = 0x00 if end of dir
+
+        // if no file were found
+        if (!found) {
+            free(filename);
+            free(*entry);
+            return RES_NOT_FOUND;
+        }
+
+        // verify if entry is directory
+        if ((*entry)->DIR_Attr & 0x10) {
+            // move file pointer
+            file_cluster = (as_uint16((*entry)->DIR_FstClusHI) << 16
+                            | as_uint16((*entry)->DIR_FstClusLO));
+            file_sector = cluster_to_lba(block, file_cluster, first_data_sector);
+            fseek(archive, file_sector * as_uint16(block->BPB_BytsPerSec), SEEK_SET);
+        } else {
+            saved = filename;
+            filename = NULL;
+            if (break_up_path(path, i+1, &filename) == LEVEL_DEPTH_ERR) {
+                // file has been found
+                free(filename);
+                filename = saved;
+                break;
+            } else {
+                // non-directory found before end of path
+                free(saved);
+                if (filename)
+                    free(filename);
+                free(*entry);
+                return GENERAL_ERR;
+            }
+        }
+    }
+
+    // reaching here means we found file descriptor
+    // and filename is no longer needed
+    free(filename);
+    return NO_ERR;
 }
 
 /**
