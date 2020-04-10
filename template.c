@@ -193,6 +193,7 @@ bool file_has_name(FAT_entry *entry, char *name) {
                 free(out);
                 return 0;
             }
+            
             out[i] = *(name++) & 0xDF; // convert to uppercase
         }
         if (*name) {
@@ -206,7 +207,7 @@ bool file_has_name(FAT_entry *entry, char *name) {
 
     out[FAT_NAME_LENGTH] = '\0';
 
-    res = strncmp(entry->DIR_Name, out, FAT_NAME_LENGTH) ? 1 : 0;
+    res = strncmp(entry->DIR_Name, out, FAT_NAME_LENGTH) == 0 ? 1 : 0;
 
     free(out);
 
@@ -251,14 +252,14 @@ error_code break_up_path(char *path, uint8 level, char **output) {
         ;
 
     // 4. on alloue le output
-    *output = malloc(sizeof(char)*i);
+    *output = malloc(sizeof(char)*(i+1));
 
     if (!*output)
         return OUT_OF_MEM;
 
     // 5. on depose doucement le string dans le output
-    strncpy(*output, temp_path, i-1);
-    (*output)[i-1] = '\0';
+    strncpy(*output, temp_path, i);
+    (*output)[i] = '\0';
 
     return NO_ERR;
 }
@@ -296,7 +297,7 @@ error_code find_file_descriptor(FILE *archive, BPB *block, char *path, FAT_entry
 
     first_data_sector = as_uint16(block->BPB_RsvdSecCnt)
         + as_uint32(block->BPB_HiddSec)
-        + (block->BPB_NumFATs * as_uint16(block->BPB_FATSz16));
+        + (block->BPB_NumFATs * as_uint32(block->BPB_FATSz32));
 
     // get root directory sector
     file_cluster = as_uint32(block->BPB_RootClus);
@@ -304,7 +305,6 @@ error_code find_file_descriptor(FILE *archive, BPB *block, char *path, FAT_entry
     // move file pointer to root directory entry position
     fseek(archive, file_sector * as_uint16(block->BPB_BytsPerSec), SEEK_SET);
 
-    printf("%d == 532480\n", file_sector * as_uint16(block->BPB_BytsPerSec));
     *entry = malloc(sizeof(FAT_entry));
     if (!*entry)
         return OUT_OF_MEM;
@@ -322,8 +322,6 @@ error_code find_file_descriptor(FILE *archive, BPB *block, char *path, FAT_entry
             return res;
         }
 
-        printf("after break_up_path\n");
-
         // find FAT_entry associated with filename
         // -----
         found = 0;
@@ -338,7 +336,6 @@ error_code find_file_descriptor(FILE *archive, BPB *block, char *path, FAT_entry
                 free(*entry);
                 return GENERAL_ERR;
             }
-            printf("name: %11s, size: %d\n", (*entry)->DIR_Name, as_uint32((*entry)->DIR_FileSize));
 
             // update file position if end of cluster reached
             cluster_bytes -= read_bytes;
@@ -418,8 +415,9 @@ error_code find_file_descriptor(FILE *archive, BPB *block, char *path, FAT_entry
 error_code
 read_file(FILE *archive, BPB *block, FAT_entry *entry, void *buff, size_t max_len) {
     size_t bytes_read = 0;
-    size_t cluster_size = block->BPB_SecPerClus * as_uint16(block->BPB_BytsPerSec);
+    long cluster_size = block->BPB_SecPerClus * as_uint16(block->BPB_BytsPerSec);
     uint32 first_data_sector, current_cluster, current_sector;
+    long len = max_len;
 
     if (entry->DIR_Name[0] == 0xE5) {
         return RES_NOT_FOUND;
@@ -427,14 +425,14 @@ read_file(FILE *archive, BPB *block, FAT_entry *entry, void *buff, size_t max_le
 
     first_data_sector = as_uint16(block->BPB_RsvdSecCnt)
         + as_uint32(block->BPB_HiddSec)
-        + (block->BPB_NumFATs * as_uint16(block->BPB_FATSz16));
+        + (block->BPB_NumFATs * as_uint32(block->BPB_FATSz32));
 
-    for (; max_len > 0; max_len -= cluster_size) {
+    for (; len > 0; len -= cluster_size) {
         current_cluster = (as_uint16(entry->DIR_FstClusHI) << 16
                            | as_uint16(entry->DIR_FstClusLO));
         current_sector = cluster_to_lba(block, current_cluster, first_data_sector);
         fseek(archive, current_sector * as_uint16(block->BPB_BytsPerSec), SEEK_SET);
-        bytes_read += fread(buff, 1, max_len < cluster_size ? max_len : cluster_size, archive);
+        bytes_read += fread(buff, 1, len < cluster_size ? len : cluster_size, archive);
         buff += bytes_read;
     }
     
@@ -448,6 +446,7 @@ int main(int argc, char *argv[]) {
 
     FAT_entry *entry;
     void *buf;
+    size_t filesize;
     FILE *fp = fopen("floppy.img", "r");
     BPB *block = malloc(sizeof(BPB));
     if (!block) {
@@ -457,25 +456,21 @@ int main(int argc, char *argv[]) {
     }
 
     read_boot_block(fp, &block);
-    printf("after read_boot_block\n");
     
-    find_file_descriptor(fp, block, "hello.txt", &entry);
-    printf("after find_file\n");
-    
+    find_file_descriptor(fp, block, "zola.txt", &entry);
 
-    buf = malloc(as_uint32(entry->DIR_FileSize));
+    filesize = as_uint32(entry->DIR_FileSize);
+    buf = malloc(2 << (ilog2(filesize)));
     if (!buf) {
         fclose(fp);
         free(block);
         return 1;
     }
 
-    printf("%d\n", as_uint32(entry->DIR_FileSize));
+    printf("%d\n", filesize);
     
-    if (read_file(fp, block, entry, buf, as_uint32(entry->DIR_FileSize))
-        == as_uint32(entry->DIR_FileSize)) {
-        printf("reached\n");
-        fwrite(buf, 1, as_uint32(entry->DIR_FileSize), stdout);
+    if (read_file(fp, block, entry, buf, filesize) == filesize) {
+        //fwrite(buf, 1, filesize, stdout);
     }
     
     free(buf);
