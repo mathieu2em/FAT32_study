@@ -202,7 +202,7 @@ bool file_has_name(FAT_entry *entry, char *name) {
                 free(out);
                 return 0;
             }
-            
+
             out[i] = *(name++) & 0xDF; // convert to uppercase
         }
         if (*name) {
@@ -448,10 +448,7 @@ read_file(FILE *archive, BPB *block, FAT_entry *entry, void *buff, size_t max_le
     current_cluster = (as_uint16(entry->DIR_FstClusHI) << 16
                        | as_uint16(entry->DIR_FstClusLO));
     for (; len > 0; len -= cluster_size) {
-        printf("avant cs\n");
         current_sector = cluster_to_lba(block, current_cluster, first_data_sector);
-        printf("%u\n", current_sector);
-        printf("yeah\n");
         fseek(archive, current_sector * as_uint16(block->BPB_BytsPerSec), SEEK_SET);
         bytes_read += fread(buff + bytes_read,                       // buffer + offset
                             1,                                       // 1 byte
@@ -466,7 +463,7 @@ read_file(FILE *archive, BPB *block, FAT_entry *entry, void *buff, size_t max_le
         else if (res < 0)
             return res;
     }
-    
+
     return bytes_read;
 }
 
@@ -502,7 +499,7 @@ int main(int argc, char *argv[]) {
         fclose(fp);
         return 1;
     }
-    
+
     if (HAS_ERROR(find_file_descriptor(fp, block, argv[2], &entry))) {
         free(block);
         fclose(fp);
@@ -524,7 +521,7 @@ int main(int argc, char *argv[]) {
             fwrite(buf+i, 1, 1, stdout);
         res = 0;
     }
-    
+
     free(buf);
     free(block);
     free(entry);
