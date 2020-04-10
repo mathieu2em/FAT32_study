@@ -109,7 +109,7 @@ uint8 ilog2(uint32 n) {
  */
 uint32 cluster_to_lba(BPB *block, uint32 cluster, uint32 first_data_sector) {
     return first_data_sector
-        + (cluster - as_uint32(block->BPB_RootClus)) * block->BPB_SecPerClus;
+        + ((cluster & FAT_CLUSTER_NO_MASK) - as_uint32(block->BPB_RootClus)) * block->BPB_SecPerClus;
 }
 
 /**
@@ -139,7 +139,15 @@ error_code get_cluster_chain_value(BPB *block,
         return GENERAL_ERR;
 
     res = fread(value, 1, expected = sizeof(uint32), archive);
-    return res == expected ? NO_ERR : GENERAL_ERR;
+    if (res == expected) {
+        if (*value >= FAT_EOC_TAG) {
+            *value = 0;
+            return RES_NOT_FOUND;
+        }
+    } else {
+        return GENERAL_ERR;
+    }
+    return NO_ERR;
 }
 
 /*
@@ -358,7 +366,6 @@ error_code find_file_descriptor(FILE *archive, BPB *block, char *path, FAT_entry
             }
             // check current FAT_entry for filename
             if (file_has_name(*entry, filename)) {
-                printf("name: %s, size: %d\n", (*entry)->DIR_Name, as_uint32((*entry)->DIR_FileSize));
                 found = 1;
                 break;
             }
@@ -415,6 +422,7 @@ error_code find_file_descriptor(FILE *archive, BPB *block, char *path, FAT_entry
  */
 error_code
 read_file(FILE *archive, BPB *block, FAT_entry *entry, void *buff, size_t max_len) {
+    error_code res;
     size_t bytes_read = 0;
     uint32 first_data_sector, current_cluster, current_sector;
     long cluster_size = block->BPB_SecPerClus * as_uint16(block->BPB_BytsPerSec);
@@ -433,9 +441,18 @@ read_file(FILE *archive, BPB *block, FAT_entry *entry, void *buff, size_t max_le
     for (; len > 0; len -= cluster_size) {
         current_sector = cluster_to_lba(block, current_cluster, first_data_sector);
         fseek(archive, current_sector * as_uint16(block->BPB_BytsPerSec), SEEK_SET);
-        bytes_read += fread(buff, 1, len < cluster_size ? len : cluster_size, archive);
-        buff += bytes_read;
-        get_cluster_chain_value(block, current_cluster, &current_cluster, archive);
+        bytes_read += fread(buff + bytes_read,                       // buffer + offset
+                            1,                                       // 1 byte
+                            len < cluster_size ? len : cluster_size, // min(len, cluster_size)
+                            archive);                                // archive
+        res = get_cluster_chain_value(block,
+                                      current_cluster,
+                                      &current_cluster,
+                                      archive);
+        if (res == RES_NOT_FOUND)
+            break;
+        else if (res < 0)
+            return res;
     }
     
     return bytes_read;
@@ -449,17 +466,26 @@ int main(int argc, char *argv[]) {
     FAT_entry *entry;
     void *buf;
     size_t filesize;
-    FILE *fp = fopen("floppy.img", "r");
-    BPB *block = malloc(sizeof(BPB));
+    long i;
+    FILE *fp;
+    BPB *block;
+
+    if (argc != 3) {
+        puts("usage: fat32-reader <archive> <filename>");
+        return 0;
+    }
+
+    block = malloc(sizeof(BPB));
     if (!block) {
         fprintf(stderr, "memory error\n");
         fclose(fp);
         return 1;
     }
 
+    fp = fopen(argv[1], "r");
     read_boot_block(fp, &block);
     
-    find_file_descriptor(fp, block, "zola.txt", &entry);
+    find_file_descriptor(fp, block, argv[2], &entry);
 
     filesize = as_uint32(entry->DIR_FileSize);
     buf = malloc(2 << (ilog2(filesize)));
@@ -469,10 +495,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    printf("%d\n", filesize);
-    
     if (read_file(fp, block, entry, buf, filesize) == filesize) {
-        fwrite(buf, 1, 1, stdout);
+        for (i = 0; i < filesize; i++)
+            fwrite(buf+i, 1, 1, stdout);
     }
     
     free(buf);
