@@ -439,7 +439,10 @@ read_file(FILE *archive, BPB *block, FAT_entry *entry, void *buff, size_t max_le
     current_cluster = (as_uint16(entry->DIR_FstClusHI) << 16
                        | as_uint16(entry->DIR_FstClusLO));
     for (; len > 0; len -= cluster_size) {
+        printf("avant cs\n");
         current_sector = cluster_to_lba(block, current_cluster, first_data_sector);
+        printf("%u\n", current_sector);
+        printf("yeah\n");
         fseek(archive, current_sector * as_uint16(block->BPB_BytsPerSec), SEEK_SET);
         bytes_read += fread(buff + bytes_read,                       // buffer + offset
                             1,                                       // 1 byte
