@@ -1,6 +1,6 @@
 /*
-  amine sami 20086365
-  mathieu perron 20076170
+  Amine   Sami   20086365
+  Mathieu Perron 20076170
 */
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "OCUnusedGlobalDeclarationInspection"
@@ -335,10 +335,14 @@ error_code find_file_descriptor(FILE *archive, BPB *block, char *path, FAT_entry
             return res;
         }
 
-        if (i == 0 && (strcmp(filename, ".") == 0 || strcmp(filename, "..") == 0)) {
-            free(filename);
-            free(*entry);
-            return GENERAL_ERR;
+        if (file_cluster == as_uint32(block->BPB_RootClus)) {
+            if(strcmp(filename, ".") == 0) {
+                continue;
+            } else if (strcmp(filename, "..") == 0) {
+                free(filename);
+                free(*entry);
+                return GENERAL_ERR;
+            }
         }
 
         // find FAT_entry associated with filename
