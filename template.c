@@ -358,6 +358,7 @@ error_code find_file_descriptor(FILE *archive, BPB *block, char *path, FAT_entry
             }
             // check current FAT_entry for filename
             if (file_has_name(*entry, filename)) {
+                printf("name: %s, size: %d\n", (*entry)->DIR_Name, as_uint32((*entry)->DIR_FileSize));
                 found = 1;
                 break;
             }
@@ -415,8 +416,8 @@ error_code find_file_descriptor(FILE *archive, BPB *block, char *path, FAT_entry
 error_code
 read_file(FILE *archive, BPB *block, FAT_entry *entry, void *buff, size_t max_len) {
     size_t bytes_read = 0;
-    long cluster_size = block->BPB_SecPerClus * as_uint16(block->BPB_BytsPerSec);
     uint32 first_data_sector, current_cluster, current_sector;
+    long cluster_size = block->BPB_SecPerClus * as_uint16(block->BPB_BytsPerSec);
     long len = max_len;
 
     if (entry->DIR_Name[0] == 0xE5) {
@@ -427,13 +428,14 @@ read_file(FILE *archive, BPB *block, FAT_entry *entry, void *buff, size_t max_le
         + as_uint32(block->BPB_HiddSec)
         + (block->BPB_NumFATs * as_uint32(block->BPB_FATSz32));
 
+    current_cluster = (as_uint16(entry->DIR_FstClusHI) << 16
+                       | as_uint16(entry->DIR_FstClusLO));
     for (; len > 0; len -= cluster_size) {
-        current_cluster = (as_uint16(entry->DIR_FstClusHI) << 16
-                           | as_uint16(entry->DIR_FstClusLO));
         current_sector = cluster_to_lba(block, current_cluster, first_data_sector);
         fseek(archive, current_sector * as_uint16(block->BPB_BytsPerSec), SEEK_SET);
         bytes_read += fread(buff, 1, len < cluster_size ? len : cluster_size, archive);
         buff += bytes_read;
+        get_cluster_chain_value(block, current_cluster, &current_cluster, archive);
     }
     
     return bytes_read;
@@ -470,7 +472,7 @@ int main(int argc, char *argv[]) {
     printf("%d\n", filesize);
     
     if (read_file(fp, block, entry, buf, filesize) == filesize) {
-        //fwrite(buf, 1, filesize, stdout);
+        fwrite(buf, 1, 1, stdout);
     }
     
     free(buf);
