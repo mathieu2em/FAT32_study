@@ -14,6 +14,7 @@
 #define FAT_CLUSTER_NO_MASK 0x1FFFFFFF
 #define FAT_DIR_ENTRY_SIZE 32
 #define HAS_NO_ERROR(err) ((err) >= 0)
+#define HAS_ERROR(err) ((err) < 0)
 #define NO_ERR 0
 #define GENERAL_ERR -1
 #define OUT_OF_MEM -3
@@ -330,6 +331,12 @@ error_code find_file_descriptor(FILE *archive, BPB *block, char *path, FAT_entry
             return res;
         }
 
+        if (i == 0 && (strcmp(filename, ".") == 0 || strcmp(filename, "..") == 0)) {
+            free(filename);
+            free(*entry);
+            return GENERAL_ERR;
+        }
+
         // find FAT_entry associated with filename
         // -----
         found = 0;
@@ -383,6 +390,8 @@ error_code find_file_descriptor(FILE *archive, BPB *block, char *path, FAT_entry
             // move file pointer
             file_cluster = (as_uint16((*entry)->DIR_FstClusHI) << 16
                             | as_uint16((*entry)->DIR_FstClusLO));
+            if (file_cluster == 0)
+                file_cluster = as_uint32(block->BPB_RootClus);
             file_sector = cluster_to_lba(block, file_cluster, first_data_sector);
             fseek(archive, file_sector * as_uint16(block->BPB_BytsPerSec), SEEK_SET);
         } else {
@@ -463,6 +472,7 @@ int main(int argc, char *argv[]) {
      * Vous êtes libre de faire ce que vous voulez ici.
      */
 
+    int res;
     FAT_entry *entry;
     void *buf;
     size_t filesize;
@@ -483,21 +493,33 @@ int main(int argc, char *argv[]) {
     }
 
     fp = fopen(argv[1], "r");
-    read_boot_block(fp, &block);
+    if (HAS_ERROR(read_boot_block(fp, &block))) {
+        fprintf(stderr, "could not read boot block\n");
+        free(block);
+        fclose(fp);
+        return 1;
+    }
     
-    find_file_descriptor(fp, block, argv[2], &entry);
+    if (HAS_ERROR(find_file_descriptor(fp, block, argv[2], &entry))) {
+        free(block);
+        fclose(fp);
+        return 1;
+    }
 
     filesize = as_uint32(entry->DIR_FileSize);
     buf = malloc(2 << (ilog2(filesize)));
     if (!buf) {
-        fclose(fp);
+        free(entry);
         free(block);
+        fclose(fp);
         return 1;
     }
 
+    res = 1;
     if (read_file(fp, block, entry, buf, filesize) == filesize) {
         for (i = 0; i < filesize; i++)
             fwrite(buf+i, 1, 1, stdout);
+        res = 0;
     }
     
     free(buf);
@@ -505,5 +527,5 @@ int main(int argc, char *argv[]) {
     free(entry);
     fclose(fp);
 
-    return 0;
+    return res;
 }
