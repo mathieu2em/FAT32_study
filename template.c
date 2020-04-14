@@ -179,9 +179,11 @@ bool file_has_name(FAT_entry *entry, char *name) {
     char *out;
 
     if (strcmp(name, "..") == 0) {
-        return strncmp(entry->DIR_Name, "..         ", FAT_NAME_LENGTH) == 0 ? 1 : 0;
+        return strncmp((char *)(entry->DIR_Name), "..         ", FAT_NAME_LENGTH)
+            == 0 ? 1 : 0;
     } else if (strcmp(name, ".") == 0) {
-        return strncmp(entry->DIR_Name, ".          ", FAT_NAME_LENGTH) == 0 ? 1 : 0;
+        return strncmp((char *)(entry->DIR_Name), ".          ", FAT_NAME_LENGTH)
+            == 0 ? 1 : 0;
     }
 
     out = malloc(sizeof(char) * (FAT_NAME_LENGTH + 1));
@@ -220,7 +222,7 @@ bool file_has_name(FAT_entry *entry, char *name) {
 
     out[FAT_NAME_LENGTH] = '\0';
 
-    res = strncmp(entry->DIR_Name, out, FAT_NAME_LENGTH) == 0 ? 1 : 0;
+    res = strncmp((char *)(entry->DIR_Name), out, FAT_NAME_LENGTH) == 0 ? 1 : 0;
 
     free(out);
 
@@ -496,7 +498,6 @@ int main(int argc, char *argv[]) {
     block = malloc(sizeof(BPB));
     if (!block) {
         fprintf(stderr, "memory error\n");
-        fclose(fp);
         return 1;
     }
 
@@ -524,8 +525,8 @@ int main(int argc, char *argv[]) {
     }
 
     res = 1;
-    if (read_file(fp, block, entry, buf, filesize) == filesize) {
-        for (i = 0; i < filesize; i++)
+    if (read_file(fp, block, entry, buf, filesize) == (int)filesize) {
+        for (i = 0; i < (long)filesize; i++)
             fwrite(buf+i, 1, 1, stdout);
         res = 0;
     }
